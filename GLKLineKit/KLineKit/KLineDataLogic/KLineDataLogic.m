@@ -149,6 +149,42 @@
     }
 }
 
+- (void)updateVisibleRangeWithOffsetX:(CGFloat)offsetX perItemWidth:(CGFloat)perItemWidth maxWidthCount:(NSInteger)itemCount {
+    
+    if (fabs(offsetX) && perItemWidth > 0) {
+        // 保存每个item的宽度
+        self.currentPerItemWidth = perItemWidth;
+        // 偏移的item数量
+        CGFloat offsetItem = offsetX / self.currentPerItemWidth;
+        // 计算新的可见范围
+        
+        CGFloat removeX = self.visibleRange.x - offsetItem;
+        if (self.visibleRange.x - offsetItem < 0) {
+            removeX = 0;
+        }
+        CGFloat widthCount = self.visibleRange.y - offsetItem;
+        if (removeX == 0) {
+            widthCount = [DataCenter shareCenter].klineModelArray.count > itemCount ? itemCount:[DataCenter shareCenter].klineModelArray.count;
+        }
+        
+        if ((removeX + itemCount) > [DataCenter shareCenter].klineModelArray.count + 5) {
+            return;
+        }
+        
+        CGPoint newRange = CGPointMake(removeX, widthCount);
+        
+        // 修正并更新显示区域
+        [self p_fixAndUpdateVisibleRange:newRange];
+        
+        for (NSObject <KLineDataLogicProtocol>*tempDelegate in self.delegateContainer) {
+            
+            if (tempDelegate && [tempDelegate respondsToSelector:@selector(visibleRangeDidChanged:scale:)]) {
+                [tempDelegate visibleRangeDidChanged:self.visibleRange scale:self.currentScale];
+            }
+        }
+    }
+}
+
 /**
  根据缩放中心点位置计算当前可显示的区域
  
@@ -161,7 +197,18 @@
  @param scale 当前缩放比例
  */
 - (void)updateVisibleRangeWithZoomCenterPercent:(CGFloat)percent perItemWidth:(CGFloat)perItemWidth scale:(CGFloat)scale {
+    // 缩放后的比例
+    CGFloat tempScale = self.currentPerItemWidth / perItemWidth;
+    CGFloat itemCount = (self.visibleRange.y - self.visibleRange.x) * tempScale;
     
+    [self priviteUpdateCenterPercent:percent perItemWidth:perItemWidth scale:scale currentItemCount:itemCount];
+}
+
+- (void)updateVisibleRangeWithZoomCenterPercent:(CGFloat)percent perItemWidth:(CGFloat)perItemWidth scale:(CGFloat)scale currentItemCount:(NSInteger)count {
+    [self priviteUpdateCenterPercent:percent perItemWidth:perItemWidth scale:scale currentItemCount:count];
+}
+
+- (void)priviteUpdateCenterPercent:(CGFloat)percent perItemWidth:(CGFloat)perItemWidth scale:(CGFloat)scale currentItemCount:(NSInteger)count {
     self.currentScale = scale;
     
     if (!(perItemWidth > 0 && perItemWidth != self.currentPerItemWidth)) {
@@ -180,7 +227,7 @@
     CGFloat tempScale = self.currentPerItemWidth / perItemWidth;
     
     // 计算缩放后的元素个数
-    CGFloat itemCount = (self.visibleRange.y - self.visibleRange.x) * tempScale;
+    CGFloat itemCount = count;
     
     // 计算缩放后显示的区域
     CGFloat new_x = (1 - tempScale) * (self.visibleRange.y - self.visibleRange.x) * percent + self.visibleRange.x;
@@ -197,7 +244,10 @@
             [tempDelegate visibleRangeDidChanged:self.visibleRange scale:self.currentScale];
         }
     }
+    
 }
+
+
 
 
 /**

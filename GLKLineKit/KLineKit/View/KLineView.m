@@ -18,7 +18,7 @@
 #import "KLineVolMADrawLogic.h"
 #import "KLineMACDDrawLogic.h"
 
-@interface KLineView ()<DataCenterProtocol,KLineDataLogicProtocol>
+@interface KLineView ()<DataCenterProtocol,KLineDataLogicProtocol,UIGestureRecognizerDelegate>
 
 /**
  数据中心
@@ -77,11 +77,6 @@
  左滑或右滑时的偏移量
  */
 @property (assign, nonatomic) CGFloat lastTouchPointX;
-
-/**
- 缩放时的两触点距离
- */
-@property (assign, nonatomic) CGFloat lastPinchWidth;
 
 /**
  当前的最值
@@ -197,7 +192,10 @@
 }
 
 #pragma mark - 公共方法 ---
-
+- (NSInteger)getCurrentItemWidthCount {
+    
+    return (self.frame.size.width - (self.config.insertOfKlineView.left + self.config.insertOfKlineView.right)) / self.perItemWidth;
+}
 /**
  将当前View的DataLogic更换为指定的DataLogic
  
@@ -482,6 +480,29 @@
     [self visibleRange];
     // 对frame添加观察者
     [self addObserver:self forKeyPath:@"bounds" options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionOld context:nil];
+    
+    //捏合手势
+    UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc]initWithTarget:self action:@selector(event_pinchAction:)];
+    pinch.delegate = self;
+    [self addGestureRecognizer:pinch];
+    
+    
+    //平移手势
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(event_panGesturAction:)];
+    pan.delegate = self;
+    pan.minimumNumberOfTouches = 1;
+    pan.maximumNumberOfTouches = 1;
+    [self addGestureRecognizer:pan];
+    
+    
+    //长按手势
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc]initWithTarget:self action:@selector(event_longPressAction:)];
+    longPress.delegate = self;
+    [self addGestureRecognizer:longPress];
+    
+    
+    
+    
 }
 
 /**
@@ -570,6 +591,98 @@
 
 #pragma mark - 手势 处理 ----
 
+- (void)event_pinchAction:(UIPinchGestureRecognizer *)recognizer {
+    if( recognizer.numberOfTouches == 2 ) {
+        CGPoint firstPoint = [recognizer locationOfTouch:0 inView:self];
+        CGPoint secondPoint = [recognizer locationOfTouch:1 inView:self];
+        //触摸中心点
+        CGFloat touchCenterX = (firstPoint.x+secondPoint.x)/2;
+        CGFloat xPercent = touchCenterX / self.frame.size.width;
+        switch (recognizer.state) {
+            case UIGestureRecognizerStateBegan:
+            {
+                recognizer.scale = self.currentScale;
+            }
+                break;
+            case UIGestureRecognizerStateChanged:
+            {
+                // 计算缩放比例
+                self.currentScale = recognizer.scale;
+                
+                if (self.currentScale > [self.config maxPinchScale]) {
+                    self.currentScale = [self.config maxPinchScale];
+                }else if(self.currentScale < [self.config minPinchScale]) {
+                    self.currentScale = [self.config minPinchScale];
+                }
+                //当前缩放达到最大或者最小值
+                recognizer.scale = self.currentScale;
+                // 计算每个元素的宽度
+                self.perItemWidth = self.currentScale * ([self.config defaultEntityLineWidth] + [self.config klineGap]);
+                // 计算当前显示的区域
+                [self.dataLogic updateVisibleRangeWithZoomCenterPercent:xPercent perItemWidth:self.perItemWidth scale:self.currentScale currentItemCount:[self getCurrentItemWidthCount]];
+            }
+                break;
+            default:
+                recognizer.scale = self.currentScale;
+                break;
+        }
+    }else {
+        recognizer.scale = self.currentScale;
+        NSLog(@"一个手指");
+    }
+    
+}
+- (void)event_panGesturAction:(UIPanGestureRecognizer *)recognizer {
+    
+    if (recognizer.numberOfTouches != 1) {
+        return;
+    }
+    CGPoint movePoint = [recognizer locationOfTouch:0 inView:self];
+    switch (recognizer.state) {
+        case UIGestureRecognizerStateBegan:
+        {
+            self.lastTouchPointX = movePoint.x;
+        }
+            break;
+            case UIGestureRecognizerStateChanged:
+        {
+            CGFloat offsetX = movePoint.x - self.lastTouchPointX;
+            [self p_updateVisibleRangeWithOffseX:offsetX];
+            self.lastTouchPointX = movePoint.x;
+        }
+            break;
+        default:
+            
+            break;
+    }
+}
+
+- (void)event_longPressAction:(UILongPressGestureRecognizer *)longPress {
+    
+    CGPoint endPoint = [longPress locationOfTouch:0 inView:self];
+    if(UIGestureRecognizerStateChanged == longPress.state || UIGestureRecognizerStateBegan == longPress.state) {
+        if (!self.isShowReticle) {
+            // 开始显示十字线
+            NSLog(@"显示十字线");
+            [self.dataLogic beginTapKLineView:self touchPoint:endPoint perItemWidth:self.perItemWidth];
+        }else {
+            [self.dataLogic moveTouchAtKLineView:self touchPoint:endPoint perItemWidth:self.perItemWidth];
+        }
+        
+    }else if(longPress.state == UIGestureRecognizerStateEnded || longPress.state == UIGestureRecognizerStateCancelled || longPress.state == UIGestureRecognizerStateFailed)
+    {
+        if (self.isShowReticle) {
+            [self.dataLogic removeTouchAtKLineView:self touchPoint:endPoint perItemWidth:self.perItemWidth];
+        }
+    }
+}
+//手势互斥事件
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return false;
+}
+
+
+#if false
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     
     UITouch *touch = [touches anyObject];
@@ -648,12 +761,10 @@
     [self.touchArray removeAllObjects];
     self.isPinching = NO;
 }
-
-#pragma mark - 手势计算 ---
-
 /**
  更新缩放比例和当前显示区域
  */
+
 - (void)p_updateScaleAndVisibleRange {
     if(!self.isPinching || self.isShowReticle || self.touchArray.count < 2) {
         return;
@@ -686,7 +797,9 @@
     // 记录触点距离
     self.lastPinchWidth = currentPinchWidth;
 }
+#endif
 
+#pragma mark - 手势计算 ---
 /**
  更新滑动手势的偏移量和可见区域
  */
@@ -697,7 +810,10 @@
         return;
     }
     
-    [self.dataLogic updateVisibleRangeWithOffsetX:offsetX perItemWidth:self.perItemWidth];
+    CGFloat itemCount = [self getCurrentItemWidthCount];
+    
+    [self.dataLogic updateVisibleRangeWithOffsetX:offsetX perItemWidth:self.perItemWidth maxWidthCount:itemCount];
+//    [self.dataLogic updateVisibleRangeWithOffsetX:offsetX perItemWidth:self.perItemWidth];
     
 }
 

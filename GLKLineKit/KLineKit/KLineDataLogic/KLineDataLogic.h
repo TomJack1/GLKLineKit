@@ -97,6 +97,10 @@
  @param perItemWidth 每个元素的宽度
  */
 - (void)updateVisibleRangeWithOffsetX:(CGFloat)offsetX perItemWidth:(CGFloat)perItemWidth;
+//补充前一个方法
+- (void)updateVisibleRangeWithOffsetX:(CGFloat)offsetX perItemWidth:(CGFloat)perItemWidth maxWidthCount:(NSInteger)itemCount;
+
+
 
 /**
  根据缩放中心点位置计算当前可显示的区域
@@ -111,6 +115,8 @@
  */
 - (void)updateVisibleRangeWithZoomCenterPercent:(CGFloat)percent perItemWidth:(CGFloat)perItemWidth scale:(CGFloat)scale;
 
+//补充前一个方法
+- (void)updateVisibleRangeWithZoomCenterPercent:(CGFloat)percent perItemWidth:(CGFloat)perItemWidth scale:(CGFloat)scale currentItemCount:(NSInteger)count;
 #pragma mark - 十字线相关 ----
 
 /**
